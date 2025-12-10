@@ -1,6 +1,6 @@
-# github-repo-standards
+# github-repo-standards-test
 
-Cross-repository standardization and compliance checking framework for the labrats-work organization.
+**TEST INSTANCE** - Cross-repository standardization and compliance checking framework for the labrats-work organization.
 
 > **⚠️ BREAKING CHANGE (v2.0):** If you're upgrading from an existing installation, see **[upgrade.md](docs/upgrade.md)** for migration instructions. Configuration is now environment-based and requires setup of GitHub Secrets and Variables.
 

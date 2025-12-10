@@ -1,10 +1,10 @@
-# Claude Context: github-repo-standards - Cross-Repository Standardization
+# Claude Context: github-repo-standards-test - Cross-Repository Standardization (TEST INSTANCE)
 
 ## Repository Overview
 
-This is the **meta-repository** for managing compliance and standardization across all repositories in the labrats-work organization. It provides automated compliance checking, best practices enforcement, and cross-repository improvement tracking.
+This is a **TEST INSTANCE** of the meta-repository for managing compliance and standardization across all repositories in the labrats-work organization. It provides automated compliance checking, best practices enforcement, and cross-repository improvement tracking.
 
-**Purpose:** Central hub for ensuring consistency, quality, and maintainability across all labrats-work repositories.
+**Purpose:** Test instance for validating the compliance framework before deploying changes to production (github-repo-standards).
 
 ## Project Architecture
 
