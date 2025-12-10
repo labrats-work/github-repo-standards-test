@@ -1,0 +1,327 @@
+# github-repo-standards
+
+Cross-repository standardization and compliance checking framework for the labrats-work organization.
+
+> **⚠️ BREAKING CHANGE (v2.0):** If you're upgrading from an existing installation, see **[upgrade.md](docs/upgrade.md)** for migration instructions. Configuration is now environment-based and requires setup of GitHub Secrets and Variables.
+
+## Purpose
+
+This repository serves as the central hub for:
+- **Compliance checking** - Automated validation of best practices
+- **Standardization tracking** - Monitoring consistency across repositories
+- **Improvement planning** - Coordinating enhancements across repos
+- **Pattern documentation** - Recording successful patterns and anti-patterns
+
+## Setup
+
+**🚀 New Installation?** See **[setup.md](docs/setup.md)** for complete setup instructions including:
+- GitHub Apps creation and installation
+- Environment secrets and variables configuration
+- Repository setup and verification
+- Troubleshooting guide
+
+**Required Configuration:**
+- 4 GitHub Secrets (App IDs and private keys)
+- 6 Optional Variables (defaults provided for all)
+
+## Quick Start
+
+### Run Compliance Checks
+
+The compliance framework is designed to run via GitHub Actions workflow, which automatically:
+- Discovers all check scripts
+- Runs them in parallel across repositories
+- Aggregates results and generates reports
+
+**Trigger automated workflow:**
+```bash
+gh workflow run compliance-check.yml --repo YOUR_ORG/github-repo-standards
+```
+
+**Run individual check locally:**
+```bash
+# Check if README.md exists
+./compliance/checks/check-readme-exists.sh /path/to/repository
+
+# Check branch protection
+./compliance/checks/check-branch-protection.sh /path/to/repository
+```
+
+### Fix Compliance Issues
+
+Fix all CRITICAL and HIGH priority failures across all repositories:
+```bash
+./compliance/scripts/fix-all-critical-high.sh
+```
+
+This automated script will:
+- Enable squash merge for 32 repositories
+- Create branch rulesets for 27 repositories
+- Add missing README.md files to 18 repositories
+- Add MIT LICENSE files to 23 repositories
+- Add .gitignore files to 16 repositories
+- Add CLAUDE.md context files to 26 repositories
+
+**Expected impact:** Improves repository compliance from 13-43% to 70-85%
+
+See [compliance/scripts/README.md](compliance/scripts/README.md) for individual fix scripts and details.
+
+### View Latest Report
+
+```bash
+cat reports/compliance-report-$(date +%Y-%m-%d).md
+```
+
+## Structure
+
+```
+github-repo-standards/
+├── compliance/              # Compliance checking framework
+│   ├── checks/             # Individual check scripts
+│   ├── scripts/            # Automated fix scripts
+│   │   ├── fix-all-critical-high.sh  # Master fix script
+│   │   ├── fix-comp-001-readme.sh    # README fixes
+│   │   ├── fix-comp-002-license.sh   # LICENSE fixes
+│   │   ├── fix-comp-003-gitignore.sh # .gitignore fixes
+│   │   ├── fix-comp-004-claudemd.sh  # CLAUDE.md fixes
+│   │   ├── fix-comp-016-branch-protection.sh  # Ruleset fixes
+│   │   ├── fix-comp-017-repo-settings.sh      # Settings fixes
+│   │   └── README.md       # Fix scripts documentation
+│   ├── check-priorities.json  # Check priority and scoring configuration
+│   └── README.md           # Compliance documentation
+├── reports/                # Generated compliance reports
+├── .github/
+│   └── workflows/
+│       └── compliance-check.yml  # Automated checks (orchestrates all checks)
+├── COMPLIANCE.md           # Best practices definition
+└── README.md               # This file
+```
+
+## Repositories Tracked
+
+This system monitors all repositories in the labrats-work organization.
+
+*Status updated weekly via automated checks. Configure which repositories to track using the GitHub App installation.*
+
+## Compliance Framework
+
+### Standards
+
+See [COMPLIANCE.md](COMPLIANCE.md) for full details on standards.
+
+**Priority Levels:**
+- 🟢 **CRITICAL** - Must have (README, LICENSE, .gitignore, CLAUDE.md)
+- 🟡 **HIGH** - Should have (README structure, docs/, workflows)
+- 🔵 **MEDIUM** - Nice to have (issue templates, ADRs, .claude/)
+- ⚪ **LOW** - Optional (CONTRIBUTING, SECURITY, MkDocs)
+
+### Compliance Scoring
+
+Each repository receives a weighted score:
+- CRITICAL checks: 10 points each
+- HIGH checks: 5 points each
+- MEDIUM checks: 2 points each
+- LOW checks: 1 point each
+
+**Tiers:**
+- 90-100%: 🟢 Excellent
+- 75-89%: 🟡 Good
+- 50-74%: 🟠 Needs Improvement
+- 0-49%: 🔴 Critical Issues
+
+## Automation
+
+### Weekly Compliance Checks
+
+Every Monday at 9 AM UTC:
+1. Clone all repositories in the organization
+2. Run compliance checks
+3. Generate reports (markdown + JSON)
+4. Commit reports to this repo
+5. Create issues for critical failures
+6. Create pipeline metrics issue with execution statistics
+7. Analyze workflow health and create reports in each repository
+8. Generate GitHub Actions usage report
+
+### Manual Runs
+
+Trigger checks manually:
+1. Go to **Actions** tab
+2. Select **Repository Compliance Check**
+3. Click **Run workflow**
+
+### Pipeline Metrics
+
+After each compliance check run, a pipeline metrics issue is automatically created in github-repo-standards with:
+- **Execution time metrics** - Total duration and step-by-step timing
+- **Repository summary** - Scores, tiers, and pass/fail counts
+- **Success metrics** - Passing/failing repository counts, issues created/updated/closed
+- **Compliance tier breakdown** - Distribution across tiers
+- **Top failing checks** - Most common compliance issues
+- **Trend analysis** - Comparison with previous run
+
+View the latest metrics: [pipeline-metrics label](../../issues?q=label%3Apipeline-metrics)
+
+### Workflow Health Reports
+
+After each compliance check run, workflow health issues are created in each repository with:
+- **Overall workflow health** - Success rate across all workflows
+- **Per-workflow statistics** - Individual success/failure rates
+- **Recent failures** - Links to failed workflow runs
+- **Health status** - Color-coded health indicator (🟢 🟡 🟠 🔴)
+- **Recommendations** - Actionable steps for failing workflows
+
+**Issue creation logic:**
+- Issues created when success rate < 95%
+- Previous health issues automatically closed
+- Labeled with `workflow-health` and `automation`
+
+Example: [my-diet workflow-health](https://github.com/labrats-work/my-diet/issues?q=label%3Aworkflow-health)
+
+### Actions Usage Report
+
+After each compliance check run, an actions usage report is created in github-repo-standards with:
+- **Total actions inventory** - All GitHub Actions used across repositories
+- **Usage statistics** - How many times each action is used
+- **Top 10 most used actions** - Ranked by usage frequency
+- **Version analysis** - Detects actions with multiple versions in use
+- **Per-repository breakdown** - Actions used in each repository
+- **Security recommendations** - Best practices for action usage
+
+**Purpose:**
+- Track which actions are used across the organization
+- Identify version inconsistencies
+- Ensure security best practices
+- Monitor action dependencies
+
+View the latest report: [actions-usage label](../../issues?q=label%3Aactions-usage)
+
+## Standardization Roadmap
+
+### Foundation Phase (Automated)
+- [x] **Automated fix scripts created** - Run `./compliance/scripts/fix-all-critical-high.sh`
+  - [x] Add CLAUDE.md to all repos (~26 repos)
+  - [x] Ensure all repos have .gitignore (~16 repos)
+  - [x] Add LICENSE to all repos (~23 repos)
+  - [x] Add README to all repos (~18 repos)
+  - [x] Enable branch protection via rulesets (~27 repos)
+  - [x] Configure repository merge settings (~32 repos)
+
+### Structure Phase
+- [ ] Standardize README structure (automated check exists, manual fixes needed)
+- [ ] Add docs/ directory to repos lacking it (~28 repos)
+- [ ] Implement ADR pattern
+- [ ] Create .claude/ configuration
+- [ ] Add issue templates
+
+### Automation Phase
+- [x] Add workflows to repositories (compliance checks active)
+- [ ] Implement scheduled tasks
+- [ ] Add PR validation
+
+### Enhancement Phase
+- [ ] Expand documentation
+- [ ] Add contributing guidelines
+- [ ] Implement consistent commit conventions
+
+## Best Practices
+
+The compliance framework promotes these patterns:
+
+**Issue-Driven Workflows:**
+- Form-based issue templates capture structured data
+- GitHub Actions auto-create PRs
+- Non-technical interface for data entry
+
+**Architecture Decision Records:**
+- Numbered ADRs document "why" decisions were made
+- Template-based consistency
+- Prevents re-litigating decisions
+
+**Documentation Status Tracking:**
+- Tables showing completion percentages
+- Visual indicators (🟢🟡🔴)
+- Clear roadmap of gaps
+
+**Automated Data Collection:**
+- Scheduled workflows gather data
+- Hands-off accumulation
+- Consistent formatting
+
+## Contributing
+
+When working with labrats-work repositories:
+
+1. Review compliance reports before making changes
+2. Follow standards defined in COMPLIANCE.md
+3. Run compliance checks locally before pushing
+4. Document architectural decisions in ADRs
+
+## Reports
+
+Compliance reports are generated weekly and stored in `reports/`:
+
+- `compliance-report-YYYY-MM-DD.md` - Human-readable markdown
+- `compliance-report-YYYY-MM-DD.json` - Machine-readable JSON
+
+### Report Location
+
+Latest reports available at:
+- [reports/](./reports/)
+
+### Report Summary
+
+View summary in GitHub Actions:
+- [Actions tab](../../actions) → Latest "Repository Compliance Check" run
+
+## Issues
+
+Track standardization work:
+- [Issue #1](../../issues/1) - Master standardization plan
+- [Compliance label](../../issues?q=label%3Acompliance) - Compliance-related issues
+- [Critical label](../../issues?q=label%3Acritical) - Critical compliance failures
+
+### Automatic Issue Creation
+
+Compliance issues are automatically created in repositories based on **priority thresholds**, not compliance scores.
+
+**Default behavior:** Issues created for any CRITICAL or HIGH priority failures.
+
+**Configurable priority threshold** (`.compliance.yml`):
+```yaml
+# Set minimum priority level that triggers issues
+# Valid values: CRITICAL, HIGH (default), MEDIUM, LOW
+min_priority_for_issue: HIGH
+
+# Completely disable automatic issues (optional)
+disabled: true
+```
+
+**Priority threshold examples:**
+- `CRITICAL`: Only CRITICAL failures trigger issues
+- `HIGH` (default): CRITICAL or HIGH failures trigger issues
+- `MEDIUM`: CRITICAL, HIGH, or MEDIUM failures trigger issues
+- `LOW`: Any failure at any priority triggers issues
+
+**Issue lifecycle:**
+- Issues created when failures at or above threshold are detected
+- Issues remain open until ALL failures at or above threshold are resolved
+- Issues close automatically when only lower-priority failures remain
+
+This ensures important issues are surfaced immediately, regardless of overall compliance percentage.
+
+## Documentation
+
+- [COMPLIANCE.md](COMPLIANCE.md) - Best practices definition
+- [compliance/README.md](compliance/README.md) - Compliance framework guide
+
+## Status
+
+**Created:** 2025-12-03
+**Organization:** labrats-work
+**Active Checks:** 13
+**Automation:** ✅ Active (weekly)
+
+---
+
+Last Updated: 2025-12-03

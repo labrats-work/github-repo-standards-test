@@ -1,0 +1,530 @@
+name: Repository Compliance Check (Matrix)
+
+on:
+  schedule:
+    # Run weekly on Mondays at 9 AM UTC
+    - cron: '0 9 * * 1'
+  workflow_dispatch:
+    inputs:
+      repos:
+        description: 'Specific repos to check (comma-separated, or leave empty for all)'
+        required: false
+        type: string
+
+# Environment variables for organization-specific configuration
+env:
+  # Repository name (without owner) where this compliance framework lives
+  STANDARDS_REPO_NAME: ${{ vars.STANDARDS_REPO_NAME || 'github-repo-standards' }}
+  # Maximum number of parallel compliance check jobs
+  MAX_PARALLEL_JOBS: ${{ vars.MAX_PARALLEL_JOBS || '10' }}
+  # Number of days to retain compliance check artifacts
+  ARTIFACT_RETENTION_DAYS: ${{ vars.ARTIFACT_RETENTION_DAYS || '30' }}
+  # Default branch name for PRs
+  DEFAULT_BRANCH: ${{ vars.DEFAULT_BRANCH || 'main' }}
+  # Issue labels for compliance issues
+  COMPLIANCE_LABEL: ${{ vars.COMPLIANCE_LABEL || 'compliance' }}
+  CRITICAL_LABEL: ${{ vars.CRITICAL_LABEL || 'critical' }}
+
+jobs:
+  # First job: Discover all repositories
+  discover-repos:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+      repo-count: ${{ steps.set-matrix.outputs.repo-count }}
+    steps:
+      - name: Generate Repo Standards App Token
+        id: repo-standards-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.REPO_STANDARDS_APP_ID }}
+          private-key: ${{ secrets.REPO_STANDARDS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Get repositories and create matrix
+        id: set-matrix
+        run: |
+          # Get list of repositories where the repo_standards app is installed
+          echo "Fetching repositories where repo_standards app is installed..."
+
+          REPOS=$(gh api /installation/repositories --paginate --jq '.repositories[].name' | jq -R -s -c 'split("\n") | map(select(length > 0))')
+
+          echo "matrix=$REPOS" >> $GITHUB_OUTPUT
+
+          REPO_COUNT=$(echo "$REPOS" | jq 'length')
+          echo "repo-count=$REPO_COUNT" >> $GITHUB_OUTPUT
+
+          echo "Found $REPO_COUNT repositories:"
+          echo "$REPOS" | jq -r '.[]'
+        env:
+          GH_TOKEN: ${{ steps.repo-standards-token.outputs.token }}
+
+  # Second job: Run compliance checks in parallel using matrix
+  check-compliance:
+    needs: discover-repos
+    runs-on: ubuntu-latest
+    if: needs.discover-repos.outputs.repo-count > 0
+    strategy:
+      matrix:
+        repo: ${{ fromJson(needs.discover-repos.outputs.matrix) }}
+      max-parallel: ${{ fromJson(vars.MAX_PARALLEL_JOBS || '10') }}  # Limit concurrent jobs to avoid rate limiting
+      fail-fast: false   # Continue even if some repos fail
+
+    permissions:
+      contents: read
+
+    steps:
+      - name: Generate Repo Standards App Token
+        id: repo-standards-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.REPO_STANDARDS_APP_ID }}
+          private-key: ${{ secrets.REPO_STANDARDS_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+
+      - name: Checkout compliance framework
+        uses: actions/checkout@v4
+        with:
+          path: ${{ env.STANDARDS_REPO_NAME }}
+
+      - name: Checkout repository
+        run: |
+          gh repo clone ${{ github.repository_owner }}/${{ matrix.repo }} repo-to-check
+        env:
+          GH_TOKEN: ${{ steps.repo-standards-token.outputs.token }}
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Run compliance checks
+        id: compliance
+        run: |
+          cd ${{ env.STANDARDS_REPO_NAME }}
+
+          echo "=================================================="
+          echo "Running compliance checks for: ${{ matrix.repo }}"
+          echo "=================================================="
+          echo ""
+
+          # Initialize result structure
+          echo '{"repository":"${{ matrix.repo }}","path":"../repo-to-check","checks":[]}' > compliance-result.json
+
+          # Load check priorities
+          PRIORITIES_FILE="compliance/check-priorities.json"
+
+          # Run each check script and collect results
+          TOTAL_SCORE=0
+          MAX_SCORE=0
+          PASSED_COUNT=0
+          FAILED_COUNT=0
+
+          echo "Discovering check scripts..."
+          for check_script in compliance/checks/check-*.sh; do
+            if [ -f "$check_script" ]; then
+              CHECK_NAME=$(basename "$check_script")
+              echo "Running: $CHECK_NAME"
+
+              # Run check and capture output
+              CHECK_OUTPUT=$(bash "$check_script" ../repo-to-check 2>&1) || true
+
+              # Extract check ID from output
+              CHECK_ID=$(echo "$CHECK_OUTPUT" | jq -r '.check_id // ""' 2>/dev/null || echo "")
+
+              if [ -z "$CHECK_ID" ]; then
+                echo "  ⚠️  Warning: Could not extract check_id from $CHECK_NAME"
+                continue
+              fi
+
+              # Look up priority for this check
+              PRIORITY=$(jq -r --arg id "$CHECK_ID" '.[$id].priority // "MEDIUM"' "$PRIORITIES_FILE")
+              POINTS=$(jq -r --arg id "$CHECK_ID" '.[$id].points // 2' "$PRIORITIES_FILE")
+
+              # Parse check result
+              STATUS=$(echo "$CHECK_OUTPUT" | jq -r '.status // "fail"')
+
+              # Update counters
+              MAX_SCORE=$((MAX_SCORE + POINTS))
+              if [ "$STATUS" = "pass" ]; then
+                TOTAL_SCORE=$((TOTAL_SCORE + POINTS))
+                PASSED_COUNT=$((PASSED_COUNT + 1))
+              else
+                FAILED_COUNT=$((FAILED_COUNT + 1))
+              fi
+
+              # Add check result with priority to results
+              TEMP_RESULT=$(echo "$CHECK_OUTPUT" | jq --arg priority "$PRIORITY" --arg script "$CHECK_NAME" '. + {priority: $priority, script: $script}')
+              jq --argjson check "{\"priority\":\"$PRIORITY\",\"script\":\"$CHECK_NAME\",\"result\":$CHECK_OUTPUT}" '.checks += [$check]' compliance-result.json > compliance-result-temp.json
+              mv compliance-result-temp.json compliance-result.json
+
+              echo "  ✓ $CHECK_ID: $STATUS ($PRIORITY)"
+            fi
+          done
+
+          # Calculate compliance score
+          if [ $MAX_SCORE -gt 0 ]; then
+            COMPLIANCE_SCORE=$((TOTAL_SCORE * 100 / MAX_SCORE))
+          else
+            COMPLIANCE_SCORE=0
+          fi
+
+          # Determine tier
+          if [ $COMPLIANCE_SCORE -ge 90 ]; then
+            TIER="🟢 Excellent"
+          elif [ $COMPLIANCE_SCORE -ge 75 ]; then
+            TIER="🟡 Good"
+          elif [ $COMPLIANCE_SCORE -ge 50 ]; then
+            TIER="🟠 Needs Improvement"
+          else
+            TIER="🔴 Critical Issues"
+          fi
+
+          # Add summary to result
+          jq --arg score "$COMPLIANCE_SCORE" \
+             --arg tier "$TIER" \
+             --arg passed "$PASSED_COUNT" \
+             --arg failed "$FAILED_COUNT" \
+             --arg total_score "$TOTAL_SCORE" \
+             --arg max_score "$MAX_SCORE" \
+             '. + {compliance_score: ($score | tonumber), tier: $tier, passed: ($passed | tonumber), failed: ($failed | tonumber), total_score: ($total_score | tonumber), max_score: ($max_score | tonumber)}' \
+             compliance-result.json > compliance-result-temp.json
+          mv compliance-result-temp.json compliance-result.json
+
+          # Extract key metrics for GitHub outputs
+          SCORE=$(jq -r '.compliance_score' compliance-result.json)
+          TIER=$(jq -r '.tier' compliance-result.json)
+          PASSED=$(jq -r '.passed' compliance-result.json)
+          FAILED=$(jq -r '.failed' compliance-result.json)
+
+          echo "score=$SCORE" >> $GITHUB_OUTPUT
+          echo "tier=$TIER" >> $GITHUB_OUTPUT
+          echo "passed=$PASSED" >> $GITHUB_OUTPUT
+          echo "failed=$FAILED" >> $GITHUB_OUTPUT
+
+          # Count failures by priority
+          CRITICAL=$(jq '[.checks[] | select(.result.status == "fail" and .priority == "CRITICAL")] | length' compliance-result.json)
+          HIGH=$(jq '[.checks[] | select(.result.status == "fail" and .priority == "HIGH")] | length' compliance-result.json)
+
+          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
+          echo "high=$HIGH" >> $GITHUB_OUTPUT
+
+          echo ""
+          echo "=================================================="
+          echo "Compliance Summary"
+          echo "=================================================="
+          echo "Score: $SCORE% - $TIER"
+          echo "Passed: $PASSED | Failed: $FAILED"
+          echo "Critical Failures: $CRITICAL | High Failures: $HIGH"
+          echo "Total: $TOTAL_SCORE / $MAX_SCORE points"
+          echo ""
+          echo "=================================================="
+          echo "Detailed Check Results"
+          echo "=================================================="
+          echo ""
+
+          # Display each check result with details
+          jq -r '.checks[] | "Check: " + (.result.check_id // "N/A") + " - " + (.result.name // "Unknown") + "\nPriority: " + .priority + "\nStatus: " + (.result.status | ascii_upcase) + "\nMessage: " + (.result.message // "No message") + "\n" + (if .result.details then "Details: " + .result.details + "\n" else "" end) + "--------------------------------------------------"' compliance-result.json
+
+          echo ""
+          echo "=================================================="
+        env:
+          GH_TOKEN: ${{ steps.repo-standards-token.outputs.token }}
+
+      - name: Upload compliance result
+        uses: actions/upload-artifact@v4
+        with:
+          name: compliance-${{ matrix.repo }}
+          path: ${{ env.STANDARDS_REPO_NAME }}/compliance-result.json
+          retention-days: ${{ fromJson(env.ARTIFACT_RETENTION_DAYS) }}
+
+      - name: Create/update compliance issue
+        run: |
+          REPO_NAME="${{ matrix.repo }}"
+          RESULT_FILE="${{ env.STANDARDS_REPO_NAME }}/compliance-result.json"
+
+          CRITICAL=${{ steps.compliance.outputs.critical }}
+          HIGH=${{ steps.compliance.outputs.high }}
+          SCORE=${{ steps.compliance.outputs.score }}
+
+          # Count medium and low failures
+          MEDIUM=$(jq '[.checks[] | select(.result.status == "fail" and .priority == "MEDIUM")] | length' "$RESULT_FILE")
+          LOW=$(jq '[.checks[] | select(.result.status == "fail" and .priority == "LOW")] | length' "$RESULT_FILE")
+
+          # Count passed and failed checks
+          PASSED=$(jq '[.checks[] | select(.result.status == "pass")] | length' "$RESULT_FILE")
+          FAILED=$(jq '[.checks[] | select(.result.status == "fail")] | length' "$RESULT_FILE")
+
+          # Determine tier
+          if [ "$SCORE" -ge 90 ]; then
+            TIER="🟢 Excellent"
+          elif [ "$SCORE" -ge 75 ]; then
+            TIER="🟡 Good"
+          elif [ "$SCORE" -ge 50 ]; then
+            TIER="🟠 Needs Improvement"
+          else
+            TIER="🔴 Critical Issues"
+          fi
+
+          # Determine if we should create/update an issue
+          if [ "$CRITICAL" -gt 0 ] || [ "$HIGH" -gt 0 ]; then
+            echo "Creating/updating issue for $REPO_NAME"
+
+            # Check if issues are enabled (by trying to list issues)
+            ISSUES_CHECK=$(gh issue list --repo "${{ github.repository_owner }}/$REPO_NAME" --limit 1 2>&1) || true
+            if echo "$ISSUES_CHECK" | grep -q "has disabled issues"; then
+              echo "⚠️  Skipping $REPO_NAME - issues are disabled"
+              exit 0
+            fi
+
+            # Create labels if they don't exist
+            gh label create "${{ env.COMPLIANCE_LABEL }}" --description "Compliance checking related" --color "0e8a16" --repo "${{ github.repository_owner }}/$REPO_NAME" 2>/dev/null || true
+            gh label create "${{ env.CRITICAL_LABEL }}" --description "Critical issues" --color "d73a4a" --repo "${{ github.repository_owner }}/$REPO_NAME" 2>/dev/null || true
+
+            # Build issue title
+            ISSUE_TITLE="🚨 Compliance Check [$CRITICAL critical, $HIGH high, $MEDIUM med, $LOW low]"
+
+            # Check for existing open compliance issue
+            EXISTING_ISSUE=$(gh issue list --repo "${{ github.repository_owner }}/$REPO_NAME" --label "${{ env.COMPLIANCE_LABEL }}" --state open --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
+
+            # Create detailed issue body with check results
+            {
+              echo "## Compliance Check Results"
+              echo ""
+              echo "**Score:** ${SCORE}% - ${TIER}"
+              echo "**Passed:** ${PASSED} checks"
+              echo "**Failed:** ${FAILED} checks (${CRITICAL} critical, ${HIGH} high, ${MEDIUM} medium, ${LOW} low)"
+              echo ""
+              echo "---"
+              echo ""
+              echo "### ❌ Failed Checks"
+              echo ""
+              jq -r '.checks[] | select(.result.status == "fail") | "#### " + (.result.check_id // "N/A") + " - " + (.result.name // "Unknown") + "\n- **Priority:** " + .priority + "\n- **Message:** " + (.result.message // "No message") + "\n" + (if .result.details then "- **Details:** " + .result.details + "\n" else "" end)' "$RESULT_FILE"
+              echo ""
+              echo "---"
+              echo ""
+              echo "### ✅ Passed Checks"
+              echo ""
+              jq -r '.checks[] | select(.result.status == "pass") | "- " + (.result.check_id // "N/A") + ": " + (.result.name // "Unknown")' "$RESULT_FILE"
+              echo ""
+              echo "---"
+              echo ""
+              echo "**Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")"
+              echo "**Workflow Run:** https://github.com/${{ github.repository_owner }}/${{ env.STANDARDS_REPO_NAME }}/actions/runs/${{ github.run_id }}"
+            } > /tmp/issue-body.md
+
+            if [ -n "$EXISTING_ISSUE" ]; then
+              echo "Updating existing issue #$EXISTING_ISSUE"
+              gh issue edit "$EXISTING_ISSUE" \
+                --repo "${{ github.repository_owner }}/$REPO_NAME" \
+                --title "$ISSUE_TITLE" \
+                --body-file /tmp/issue-body.md || echo "Failed to update issue"
+            else
+              echo "Creating new issue"
+              CREATE_RESULT=$(gh issue create \
+                --repo "${{ github.repository_owner }}/$REPO_NAME" \
+                --title "$ISSUE_TITLE" \
+                --label "${{ env.COMPLIANCE_LABEL }}" \
+                --label "${{ env.CRITICAL_LABEL }}" \
+                --body-file /tmp/issue-body.md 2>&1) || true
+
+              if echo "$CREATE_RESULT" | grep -q "has disabled issues"; then
+                echo "⚠️  Skipping $REPO_NAME - issues are disabled"
+              elif echo "$CREATE_RESULT" | grep -q "https://"; then
+                echo "$CREATE_RESULT"
+              else
+                echo "Failed to create issue in $REPO_NAME: $CREATE_RESULT"
+              fi
+            fi
+          else
+            echo "No critical/high failures for $REPO_NAME, checking if we should close existing issues"
+
+            # Check if issues are enabled
+            ISSUES_CHECK=$(gh issue list --repo "${{ github.repository_owner }}/$REPO_NAME" --limit 1 2>&1) || true
+            if echo "$ISSUES_CHECK" | grep -q "has disabled issues"; then
+              echo "⚠️  Skipping $REPO_NAME - issues are disabled"
+              exit 0
+            fi
+
+            # Check if there's an open compliance issue to close
+            EXISTING_ISSUE=$(gh issue list --repo "${{ github.repository_owner }}/$REPO_NAME" --label "${{ env.COMPLIANCE_LABEL }}" --state open --json number --jq '.[0].number // ""' 2>/dev/null || echo "")
+
+            if [ -n "$EXISTING_ISSUE" ]; then
+              echo "Closing compliance issue #$EXISTING_ISSUE for $REPO_NAME"
+              gh issue close "$EXISTING_ISSUE" \
+                --repo "${{ github.repository_owner }}/$REPO_NAME" \
+                --comment "✅ Compliance check now passing with score: $SCORE%. All critical and high priority issues resolved." || echo "Failed to close issue"
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ steps.repo-standards-token.outputs.token }}
+
+      - name: Summary
+        run: |
+          cd ${{ env.STANDARDS_REPO_NAME }}
+
+          echo "## 📊 ${{ matrix.repo }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Score:** ${{ steps.compliance.outputs.score }}% ${{ steps.compliance.outputs.tier }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Passed:** ${{ steps.compliance.outputs.passed }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed:** ${{ steps.compliance.outputs.failed }} (Critical: ${{ steps.compliance.outputs.critical }}, High: ${{ steps.compliance.outputs.high }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Add detailed check results table if there are failures
+          if [ "${{ steps.compliance.outputs.failed }}" -gt 0 ]; then
+            echo "### ❌ Failed Checks" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            echo "| Check | Priority | Message |" >> $GITHUB_STEP_SUMMARY
+            echo "|-------|----------|---------|" >> $GITHUB_STEP_SUMMARY
+            jq -r '.checks[] | select(.result.status == "fail") | "| " + (.result.check_id // "N/A") + " - " + (.result.name // "Unknown") + " | " + .priority + " | " + (.result.message // "No message") + " |"' compliance-result.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+          # Add summary of passed checks
+          if [ "${{ steps.compliance.outputs.passed }}" -gt 0 ]; then
+            echo "### ✅ Passed Checks (${{ steps.compliance.outputs.passed }})" >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+            jq -r '.checks[] | select(.result.status == "pass") | "- " + (.result.check_id // "N/A") + ": " + (.result.name // "Unknown")' compliance-result.json >> $GITHUB_STEP_SUMMARY
+            echo "" >> $GITHUB_STEP_SUMMARY
+          fi
+
+  # Third job: Aggregate results and create PR
+  aggregate-results:
+    needs: [discover-repos, check-compliance]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+
+    steps:
+      - name: Generate Internal Automation App Token
+        id: internal-automation-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.INTERNAL_AUTOMATION_APP_ID }}
+          private-key: ${{ secrets.INTERNAL_AUTOMATION_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ env.STANDARDS_REPO_NAME }}
+
+      - name: Checkout github-repo-standards
+        uses: actions/checkout@v4
+        with:
+          token: ${{ steps.internal-automation-token.outputs.token }}
+
+      - name: Download all compliance results
+        uses: actions/download-artifact@v4
+        with:
+          path: compliance-results
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+      - name: Aggregate results
+        run: |
+          mkdir -p reports
+
+          # Combine all JSON results into a single report
+          echo '{"generated_at":"'$(date -u +"%Y-%m-%dT%H:%M:%SZ")'","repositories":[]}' > reports/compliance-report-$(date +%Y-%m-%d).json
+
+          # Process each repository result
+          for dir in compliance-results/compliance-*; do
+            if [ -f "$dir/compliance-result.json" ]; then
+              REPO_NAME=$(basename "$dir" | sed 's/compliance-//')
+
+              # Add repository name to the result
+              jq --arg repo "$REPO_NAME" '. + {repository: $repo}' "$dir/compliance-result.json" > /tmp/repo-result.json
+
+              # Append to combined report
+              jq --slurpfile new /tmp/repo-result.json '.repositories += $new' reports/compliance-report-$(date +%Y-%m-%d).json > /tmp/combined.json
+              mv /tmp/combined.json reports/compliance-report-$(date +%Y-%m-%d).json
+            fi
+          done
+
+      - name: Generate markdown report
+        run: |
+          JSON_REPORT=$(ls -t reports/compliance-report-*.json | head -1)
+          MD_REPORT="${JSON_REPORT%.json}.md"
+
+          # Generate markdown from JSON
+          cat > "$MD_REPORT" <<'EOF'
+          # Repository Compliance Report
+
+          **Generated:** $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+
+          ## Summary
+
+          EOF
+
+          # Add summary statistics
+          TOTAL_REPOS=$(jq '.repositories | length' "$JSON_REPORT")
+          echo "- **Total Repositories:** $TOTAL_REPOS" >> "$MD_REPORT"
+          echo "" >> "$MD_REPORT"
+
+          # Add per-repository details
+          echo "## Repository Details" >> "$MD_REPORT"
+          echo "" >> "$MD_REPORT"
+
+          jq -r '.repositories[] | "### \(.repository)\n- **Score:** \(.compliance_score)% \(.tier)\n- **Passed:** \(.passed)/\(.passed + .failed)\n"' "$JSON_REPORT" >> "$MD_REPORT"
+
+      - name: Create PR with reports
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          git add reports/
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+            echo "pr_created=false" >> $GITHUB_ENV
+          else
+            # Create a new branch for the PR
+            BRANCH_NAME="compliance-reports-$(date +%Y-%m-%d-%H%M%S)"
+            git checkout -b "$BRANCH_NAME"
+
+            git commit -m "chore: Update compliance reports ($(date +%Y-%m-%d))"
+            git push -u origin "$BRANCH_NAME"
+
+            # Check if a PR already exists for compliance reports
+            EXISTING_PR=$(gh pr list --head "$BRANCH_NAME" --state open --json number --jq '.[0].number // ""')
+
+            if [ -z "$EXISTING_PR" ]; then
+              # Create new PR
+              PR_URL=$(gh pr create \
+                --title "chore: Update compliance reports ($(date +%Y-%m-%d))" \
+                --body "Automated compliance report update from weekly scan.
+
+          This PR contains the latest compliance check results for all repositories.
+
+          **Generated:** $(date -u +%Y-%m-%d\ %H:%M:%S\ UTC)
+          **Workflow Run:** https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}" \
+                --base ${{ env.DEFAULT_BRANCH }} \
+                --head "$BRANCH_NAME")
+
+              PR_NUMBER=$(echo "$PR_URL" | grep -o '[0-9]*$')
+              echo "pr_number=$PR_NUMBER" >> $GITHUB_ENV
+              echo "pr_created=true" >> $GITHUB_ENV
+              echo "Created PR #$PR_NUMBER: $PR_URL"
+            else
+              echo "PR already exists: #$EXISTING_PR"
+              echo "pr_number=$EXISTING_PR" >> $GITHUB_ENV
+              echo "pr_created=false" >> $GITHUB_ENV
+            fi
+          fi
+        env:
+          GH_TOKEN: ${{ steps.internal-automation-token.outputs.token }}
+
+      - name: Approve and merge compliance reports PR
+        if: env.pr_number != ''
+        run: |
+          echo "Approving and merging PR #${{ env.pr_number }}"
+
+          # Approve the PR
+          gh pr review ${{ env.pr_number }} --approve --body "Automated approval for compliance reports" || echo "Failed to approve PR (may already be approved)"
+
+          # Merge the PR
+          gh pr merge ${{ env.pr_number }} --squash --delete-branch || echo "Failed to merge PR"
+        env:
+          GH_TOKEN: ${{ steps.internal-automation-token.outputs.token }}
