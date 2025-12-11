@@ -16,9 +16,9 @@ Thumbs.db
 # Test repositories (don't commit cloned repos)
 repos/
 
-# Generated compliance reports (organization-specific output files)
-reports/*.json
-reports/*.md
+# Generated compliance reports - ENABLED for test instance to verify report generation
+# reports/*.json
+# reports/*.md
 !reports/README.md
 
 # Backup files
