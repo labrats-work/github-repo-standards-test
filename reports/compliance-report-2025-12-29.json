@@ -1,0 +1,389 @@
+{
+  "generated_at": "2025-12-29T09:06:20Z",
+  "repositories": [
+    {
+      "repository": "github-repo-standards",
+      "path": "../repo-to-check",
+      "checks": [
+        {
+          "priority": "MEDIUM",
+          "script": "check-adr-pattern.sh",
+          "result": {
+            "check_id": "COMP-009",
+            "name": "ADR Pattern",
+            "status": "pass",
+            "message": "Found 5 ADR(s) with INDEX.md"
+          }
+        },
+        {
+          "priority": "MEDIUM",
+          "script": "check-adr-quality.sh",
+          "result": {
+            "check_id": "COMP-014",
+            "name": "ADR Quality",
+            "status": "pass",
+            "message": "5 ADR(s) with 71% avg quality (1 below standard: 0000-adr-template.md: 4/7 sections)"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-branch-protection.sh",
+          "result": {
+            "check_id": "COMP-016",
+            "name": "Branch Protection",
+            "status": "pass",
+            "message": "Branch 'main' is protected (basic protection enabled)"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-branch-rulesets.sh",
+          "result": {
+            "check_id": "COMP-019",
+            "name": "Branch Rulesets (not Classic Protection)",
+            "status": "fail",
+            "message": "Branch 'main' uses both classic protection and rulesets. Complete migration by removing classic protection."
+          }
+        },
+        {
+          "priority": "MEDIUM",
+          "script": "check-claude-config.sh",
+          "result": {
+            "check_id": "COMP-010",
+            "name": ".claude/ Configuration",
+            "status": "pass",
+            "message": ".claude/ directory exists with 1 file(s)"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-claude-md-exists.sh",
+          "result": {
+            "check_id": "COMP-004",
+            "name": "CLAUDE.md Exists",
+            "status": "pass",
+            "message": "CLAUDE.md found with content (225 lines)"
+          }
+        },
+        {
+          "priority": "LOW",
+          "script": "check-contributing.sh",
+          "result": {
+            "check_id": "COMP-011",
+            "name": "CONTRIBUTING.md",
+            "status": "pass",
+            "message": "CONTRIBUTING.md found"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-default-branch.sh",
+          "result": {
+            "check_id": "COMP-018",
+            "name": "Default Branch",
+            "status": "pass",
+            "message": "Default branch is 'main'"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-deprecated-actions.sh",
+          "result": {
+            "check_id": "COMP-015",
+            "name": "Deprecated Actions",
+            "status": "pass",
+            "message": "No deprecated actions found in 1 workflow(s)"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-docs-directory.sh",
+          "result": {
+            "check_id": "COMP-006",
+            "name": "docs/ Directory",
+            "status": "pass",
+            "message": "docs/ directory exists with README.md and 14 markdown files"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-gitignore-exists.sh",
+          "result": {
+            "check_id": "COMP-003",
+            "name": ".gitignore Exists",
+            "status": "pass",
+            "message": ".gitignore found and not empty"
+          }
+        },
+        {
+          "priority": "MEDIUM",
+          "script": "check-issue-templates.sh",
+          "result": {
+            "check_id": "COMP-008",
+            "name": "Issue Templates",
+            "status": "pass",
+            "message": "Found 3 issue template(s)"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-license-exists.sh",
+          "result": {
+            "check_id": "COMP-002",
+            "name": "LICENSE File Exists",
+            "status": "pass",
+            "message": "LICENSE file found"
+          }
+        },
+        {
+          "priority": "LOW",
+          "script": "check-mkdocs.sh",
+          "result": {
+            "check_id": "COMP-013",
+            "name": "MkDocs Configuration",
+            "status": "pass",
+            "message": "MkDocs configured with 14 markdown files"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-readme-exists.sh",
+          "result": {
+            "check_id": "COMP-001",
+            "name": "README.md Exists",
+            "status": "pass",
+            "message": "README.md found"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-readme-structure.sh",
+          "result": {
+            "check_id": "COMP-005",
+            "name": "README Structure",
+            "status": "pass",
+            "message": "README contains all required sections"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-repo-settings.sh",
+          "result": {
+            "check_id": "COMP-017",
+            "name": "Repository Settings",
+            "status": "fail",
+            "message": "Repository settings issues: No merge methods enabled"
+          }
+        },
+        {
+          "priority": "LOW",
+          "script": "check-security.sh",
+          "result": {
+            "check_id": "COMP-012",
+            "name": "SECURITY.md",
+            "status": "pass",
+            "message": "SECURITY.md found"
+          }
+        }
+      ],
+      "compliance_score": 88,
+      "tier": "🟡 Good",
+      "passed": 16,
+      "failed": 2,
+      "total_score": 76,
+      "max_score": 86
+    },
+    {
+      "repository": "github-repo-standards-test",
+      "path": "../repo-to-check",
+      "checks": [
+        {
+          "priority": "MEDIUM",
+          "script": "check-adr-pattern.sh",
+          "result": {
+            "check_id": "COMP-009",
+            "name": "ADR Pattern",
+            "status": "pass",
+            "message": "Found 5 ADR(s) with INDEX.md"
+          }
+        },
+        {
+          "priority": "MEDIUM",
+          "script": "check-adr-quality.sh",
+          "result": {
+            "check_id": "COMP-014",
+            "name": "ADR Quality",
+            "status": "pass",
+            "message": "5 ADR(s) with 71% avg quality (1 below standard: 0000-adr-template.md: 4/7 sections)"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-branch-protection.sh",
+          "result": {
+            "check_id": "COMP-016",
+            "name": "Branch Protection",
+            "status": "fail",
+            "message": "Branch 'main' is not protected"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-branch-rulesets.sh",
+          "result": {
+            "check_id": "COMP-019",
+            "name": "Branch Rulesets (not Classic Protection)",
+            "status": "fail",
+            "message": "Branch 'main' has no protection. Configure branch rulesets."
+          }
+        },
+        {
+          "priority": "MEDIUM",
+          "script": "check-claude-config.sh",
+          "result": {
+            "check_id": "COMP-010",
+            "name": ".claude/ Configuration",
+            "status": "pass",
+            "message": ".claude/ directory exists with 1 file(s)"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-claude-md-exists.sh",
+          "result": {
+            "check_id": "COMP-004",
+            "name": "CLAUDE.md Exists",
+            "status": "pass",
+            "message": "CLAUDE.md found with content (225 lines)"
+          }
+        },
+        {
+          "priority": "LOW",
+          "script": "check-contributing.sh",
+          "result": {
+            "check_id": "COMP-011",
+            "name": "CONTRIBUTING.md",
+            "status": "pass",
+            "message": "CONTRIBUTING.md found"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-default-branch.sh",
+          "result": {
+            "check_id": "COMP-018",
+            "name": "Default Branch",
+            "status": "pass",
+            "message": "Default branch is 'main'"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-deprecated-actions.sh",
+          "result": {
+            "check_id": "COMP-015",
+            "name": "Deprecated Actions",
+            "status": "pass",
+            "message": "No deprecated actions found in 1 workflow(s)"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-docs-directory.sh",
+          "result": {
+            "check_id": "COMP-006",
+            "name": "docs/ Directory",
+            "status": "pass",
+            "message": "docs/ directory exists with README.md and 14 markdown files"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-gitignore-exists.sh",
+          "result": {
+            "check_id": "COMP-003",
+            "name": ".gitignore Exists",
+            "status": "pass",
+            "message": ".gitignore found and not empty"
+          }
+        },
+        {
+          "priority": "MEDIUM",
+          "script": "check-issue-templates.sh",
+          "result": {
+            "check_id": "COMP-008",
+            "name": "Issue Templates",
+            "status": "pass",
+            "message": "Found 3 issue template(s)"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-license-exists.sh",
+          "result": {
+            "check_id": "COMP-002",
+            "name": "LICENSE File Exists",
+            "status": "pass",
+            "message": "LICENSE file found"
+          }
+        },
+        {
+          "priority": "LOW",
+          "script": "check-mkdocs.sh",
+          "result": {
+            "check_id": "COMP-013",
+            "name": "MkDocs Configuration",
+            "status": "pass",
+            "message": "MkDocs configured with 14 markdown files"
+          }
+        },
+        {
+          "priority": "CRITICAL",
+          "script": "check-readme-exists.sh",
+          "result": {
+            "check_id": "COMP-001",
+            "name": "README.md Exists",
+            "status": "pass",
+            "message": "README.md found"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-readme-structure.sh",
+          "result": {
+            "check_id": "COMP-005",
+            "name": "README Structure",
+            "status": "pass",
+            "message": "README contains all required sections"
+          }
+        },
+        {
+          "priority": "HIGH",
+          "script": "check-repo-settings.sh",
+          "result": {
+            "check_id": "COMP-017",
+            "name": "Repository Settings",
+            "status": "fail",
+            "message": "Repository settings issues: No merge methods enabled"
+          }
+        },
+        {
+          "priority": "LOW",
+          "script": "check-security.sh",
+          "result": {
+            "check_id": "COMP-012",
+            "name": "SECURITY.md",
+            "status": "pass",
+            "message": "SECURITY.md found"
+          }
+        }
+      ],
+      "compliance_score": 82,
+      "tier": "🟡 Good",
+      "passed": 15,
+      "failed": 3,
+      "total_score": 71,
+      "max_score": 86
+    }
+  ]
+}
